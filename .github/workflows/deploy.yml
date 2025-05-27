@@ -1,0 +1,37 @@
+# .github/workflows/deploy.yml
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main # mainブランチにプッシュされたときにワークフローを実行
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Node.jsのバージョン。適宜最新のLTS版に合わせてください（例: '20'）
+
+      - name: Install dependencies
+        run: npm install # または yarn install
+
+      - name: Build React app
+        run: npm run build # または yarn build
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build # ビルド成果物があるディレクトリ
+          # カスタムドメインを使う場合は以下をコメント解除して設定
+          # cname: example.com
+          # コミットユーザー名とメールアドレス（任意）
+          # user_name: 'github-actions[bot]'
+          # user_email: 'github-actions[bot]@users.noreply.github.com'
