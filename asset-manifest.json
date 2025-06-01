@@ -1,11 +1,11 @@
 {
   "files": {
-    "main.js": "/react_app/static/js/main.b06a578c.js",
+    "main.js": "/react_app/static/js/main.59416fdf.js",
     "static/media/card_back.png": "/react_app/static/media/card_back.9a5a8084ec80560f39b2.png",
     "index.html": "/react_app/index.html",
-    "main.b06a578c.js.map": "/react_app/static/js/main.b06a578c.js.map"
+    "main.59416fdf.js.map": "/react_app/static/js/main.59416fdf.js.map"
   },
   "entrypoints": [
-    "static/js/main.b06a578c.js"
+    "static/js/main.59416fdf.js"
   ]
 }
