@@ -13,7 +13,7 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 // Appコンポーネントをルートにレンダリング
 root.render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename="/react_app"> 
       <Routes>
         <Route path="/" element={<App />} /> {/* タイトル画面へのルート */}
         <Route path="/blackjack" element={<Blackjack />} /> {/* ブラックジャック画面へのルート */}
