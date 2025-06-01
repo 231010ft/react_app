@@ -15,7 +15,7 @@ export const Poker = () => {
   const [canExchange, setCanExchange] = useState(false); // カード交換が可能かどうか
   const [chip, setChip] = useState(100); // プレイヤーの所持チップ
   const [bet, setBet] = useState(''); // 賭け金
-  const [winAmount, setWinAmount] = useState(0); // 勝利金額
+  const [winAmount, setWinAmount] = useState(0); // 勝利金額（UIで表示するように修正）
   const [payoutMultipliers] = useState({
     // 各役に対する配当倍率
     'ロイヤルストレートフラッシュ': 250,
@@ -38,6 +38,9 @@ export const Poker = () => {
       try {
         // デッキを作成するAPIを呼び出し
         const response = await fetch('https://deckofcardsapi.com/api/deck/new/shuffle/?deck_count=1');
+        if (!response.ok) { // エラーハンドリングの強化
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const data = await response.json();
         if (data.success) {
           setDeckId(data.deck_id); // デッキIDを保存
@@ -46,7 +49,7 @@ export const Poker = () => {
         }
       } catch (error) {
         setError('APIリクエスト中にエラーが発生しました。'); // エラーメッセージを設定
-        console.error(error); // エラーをコンソールに出力
+        console.error("Error creating new deck:", error); // エラーをコンソールに出力
       } finally {
         setLoading(false); // ローディング状態を終了
       }
@@ -58,13 +61,17 @@ export const Poker = () => {
   // カードを引く関数
   const drawCards = useCallback(async (deckId, count) => {
     if (!deckId) {
-      return null; // デッキが存在しない場合は何もしない
+      setError('デッキIDがありません。'); // デッキIDがない場合のエラー
+      return null;
     }
     setLoading(true); // ローディング状態を開始
     setError(null); // エラーをリセット
     try {
       // カードを引くAPIを呼び出し
       const response = await fetch(`https://deckofcardsapi.com/api/deck/${deckId}/draw/?count=${count}`);
+      if (!response.ok) { // エラーハンドリングの強化
+          throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
       if (data.success && data.cards.length > 0) {
         return data.cards; // 引いたカードを返す
@@ -74,7 +81,7 @@ export const Poker = () => {
       }
     } catch (error) {
       setError('APIリクエスト中にエラーが発生しました。'); // エラーメッセージを設定
-      console.error(error); // エラーをコンソールに出力
+      console.error("Error drawing cards:", error); // エラーをコンソールに出力
       return null;
     } finally {
       setLoading(false); // ローディング状態を終了
@@ -83,27 +90,31 @@ export const Poker = () => {
 
   // 初期手札を配る関数
   const dealInitialHand = useCallback(async () => {
-    if (deckId && bet > 0) {
-      setLoading(true); // ローディング状態を開始
-      setError(null); // エラーをリセット
-      try {
-        const cards = await drawCards(deckId, 5); // 5枚のカードを引く
-        if (cards) {
-          setPlayerHand(cards); // プレイヤーの手札を設定
-          setGamePhase('initial'); // ゲームフェーズを初期フェーズに設定
-          setExchangeCount(0); // 交換回数をリセット
-          setSelectedCards([]); // 選択されたカードをリセット
-          setHandRank(''); // 手札の役をリセット
-          setCanExchange(true); // カード交換を可能にする
-          setWinAmount(0); // 勝利金額をリセット
+    // betが有効な数値かつチップが十分にあることを再確認
+    if (bet !== '' && parseInt(bet, 10) > 0 && parseInt(bet, 10) <= chip && deckId) {
+        setLoading(true); // ローディング状態を開始
+        setError(null); // エラーをリセット
+        try {
+            const cards = await drawCards(deckId, 5); // 5枚のカードを引く
+            if (cards) {
+                setPlayerHand(cards); // プレイヤーの手札を設定
+                setGamePhase('initial'); // ゲームフェーズを初期フェーズに設定
+                setExchangeCount(0); // 交換回数をリセット
+                setSelectedCards([]); // 選択されたカードをリセット
+                setHandRank(''); // 手札の役をリセット
+                setCanExchange(true); // カード交換を可能にする
+                setWinAmount(0); // 勝利金額をリセット
+            }
+        } catch (err) {
+            console.error("Error dealing initial hand:", err);
+            setError('初期手札の配布中にエラーが発生しました。');
+        } finally {
+            setLoading(false); // ローディング状態を終了
         }
-      } finally {
-        setLoading(false); // ローディング状態を終了
-      }
-    } else if (bet === 0) {
-      setError('チップを賭けてください。'); // 賭け金が0の場合のエラー
+    } else {
+        setError('有効な賭け金を入力してください。'); // 賭け金が無効な場合のエラー
     }
-  }, [deckId, drawCards, bet]);
+}, [deckId, drawCards, bet, chip]); // 依存配列にchipを追加
 
   // カードを選択または選択解除する関数
   const toggleSelectCard = (index) => {
@@ -135,6 +146,9 @@ export const Poker = () => {
           setExchangeCount((prevCount) => prevCount + 1); // 交換回数を増加
           setGamePhase('exchange'); // ゲームフェーズを交換フェーズに設定
         }
+      } catch (err) {
+        console.error("Error exchanging cards:", err);
+        setError('カードの交換中にエラーが発生しました。');
       } finally {
         setLoading(false); // ローディング状態を終了
       }
@@ -155,7 +169,7 @@ export const Poker = () => {
   // 配当を計算する関数
   const calculatePayout = (rank) => {
     const multiplier = payoutMultipliers[rank] || 0; // 役に対応する倍率を取得
-    const payout = bet * multiplier; // 配当を計算
+    const payout = parseInt(bet, 10) * multiplier; // 配当を計算
     setWinAmount(payout); // 勝利金額を設定
     setChip((prevChip) => prevChip + payout); // チップを更新
   };
@@ -166,7 +180,12 @@ export const Poker = () => {
       setLoading(true); // ローディング状態を開始
       setError(null); // エラーをリセット
       fetch(`https://deckofcardsapi.com/api/deck/${deckId}/shuffle/`) // デッキをシャッフル
-        .then((response) => response.json())
+        .then((response) => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then((data) => {
           if (data.success) {
             // ゲームの状態をリセット
@@ -176,7 +195,7 @@ export const Poker = () => {
             setCanExchange(false);
             setExchangeCount(0);
             setSelectedCards([]);
-            setBet(0);
+            setBet(''); // 賭け金をリセット（数値ではなく空文字列に）
             setWinAmount(0);
           } else {
             setError('デッキのリシャッフルに失敗しました。'); // エラーメッセージを設定
@@ -184,7 +203,7 @@ export const Poker = () => {
         })
         .catch((error) => {
           setError('APIリクエスト中にエラーが発生しました。'); // エラーメッセージを設定
-          console.error(error); // エラーをコンソールに出力
+          console.error("Error shuffling deck:", error); // エラーをコンソールに出力
         })
         .finally(() => setLoading(false)); // ローディング状態を終了
     }
@@ -192,21 +211,26 @@ export const Poker = () => {
 
   // 賭け金の変更を処理する関数
   const handleBetChange = (event) => {
-    const value = parseInt(event.target.value, 10); // 入力値を整数に変換
-    if (!isNaN(value) && value >= 0 && value <= chip) {
-      setBet(event.target.value); // 賭け金を設定
-    } else if (event.target.value === '') {
+    const value = event.target.value; // stringのまま取得
+    if (value === '') {
       setBet(''); // 空の入力を許可
+    } else {
+      const numValue = parseInt(value, 10);
+      // NaNでなく、0以上かつ現在のチップ以下であること
+      if (!isNaN(numValue) && numValue >= 0 && numValue <= chip) {
+        setBet(value); // 文字列として賭け金を設定
+      }
     }
   };
 
   // 賭け金を確定してゲームを開始する関数
   const placeBet = () => {
-    if (bet !== '' && parseInt(bet, 10) > 0 && gamePhase === 'betting') {
-      setChip((prevChip) => prevChip - parseInt(bet, 10)); // 賭け金を差し引く
+    const currentBet = parseInt(bet, 10);
+    if (!isNaN(currentBet) && currentBet > 0 && currentBet <= chip && gamePhase === 'betting') {
+      setChip((prevChip) => prevChip - currentBet); // 賭け金を差し引く
       dealInitialHand(); // 初期手札を配る
-    } else if (bet === '' || parseInt(bet, 10) === 0) {
-      setError('賭けるチップ額を入力してください。'); // 賭け金が無効な場合のエラー
+    } else {
+      setError('賭けるチップ額を入力してください。チップが不足している可能性があります。'); // 賭け金が無効な場合のエラー
     }
   };
 
@@ -232,26 +256,45 @@ export const Poker = () => {
     if (rank === 'J') return 11;
     if (rank === 'Q') return 12;
     if (rank === 'K') return 13;
-    if (rank === 'A') return 14;
-    return 0;
+    if (rank === 'A') return 14; // エースを14として扱う
+    return 0; // 不明なランクの場合
   };
 
   // 役を判定する関数 (基本的な判定のみ)
   const determineHand = (hand) => {
     if (!hand || hand.length !== 5) return '';
 
-    const ranks = getRanks(hand).sort((a, b) => rankToValue(a) - rankToValue(b));
+    const ranks = getRanks(hand);
+    // 数字に変換してソートすることで、ストレートの判定が容易になる
+    const values = ranks.map(rankToValue).sort((a, b) => a - b);
     const suits = getSuits(hand);
     const rankCounts = countRanks(ranks);
-    const values = ranks.map(rankToValue);
 
+    // フラッシュの判定
     const isFlush = suits.every(suit => suit === suits[0]);
-    const isStraight = values.every((v, i, a) => i === 0 || v === a[i - 1] + 1) ||
-      (new Set(ranks).has('A') && new Set(ranks).has('2') && new Set(ranks).has('3') && new Set(ranks).has('4') && new Set(ranks).has('5'));
 
-    const hasRoyal = new Set(ranks).has('A') && new Set(ranks).has('K') && new Set(ranks).has('Q') && new Set(ranks).has('J') && new Set(ranks).has('T');
+    // ストレートの判定
+    let isStraight = true;
+    for (let i = 0; i < values.length - 1; i++) {
+        if (values[i + 1] !== values[i] + 1) {
+            isStraight = false;
+            break;
+        }
+    }
+    // A-5ストレート (ブロードウェイではないが、一部ルールでストレートとみなされる)
+    // これは`values`がソートされているので、14(A), 2, 3, 4, 5 の形になる可能性を考慮
+    // ただし、一般的にはエースはハイカードかローカードのどちらかとして扱われる
+    // ここでは14として処理しているため、A-5ストレートは個別に判定が必要
+    const isAceLowStraight = JSON.stringify(values) === JSON.stringify([2, 3, 4, 5, 14]); // A,2,3,4,5のソートされた値
 
-    if (isFlush && isStraight && hasRoyal) return 'ロイヤルストレートフラッシュ';
+    if (isAceLowStraight) isStraight = true;
+
+
+    // 役の判定ロジック
+    // 役の重複判定順序は重要（強い役から先に判定する）
+    if (isFlush && isStraight && values.includes(14) && values.includes(13) && values.includes(12) && values.includes(11) && values.includes(10)) {
+        return 'ロイヤルストレートフラッシュ';
+    }
     if (isFlush && isStraight) return 'ストレートフラッシュ';
     if (Object.values(rankCounts).includes(4)) return 'フォーカード';
     if (Object.values(rankCounts).includes(3) && Object.values(rankCounts).includes(2)) return 'フルハウス';
@@ -264,7 +307,9 @@ export const Poker = () => {
     return 'ハイカード';
   };
 
-  if (loading) return <div className="text-center py-8">Loading...</div>;
+  // UIの表示
+  if (loading) return <div className="text-center py-8 text-white">Loading...</div>; // ローディングメッセージ
+  // エラーメッセージは赤色で表示
   if (error) return <div className="text-red-500 text-center py-8">{error}</div>;
 
   return (
@@ -272,7 +317,19 @@ export const Poker = () => {
       <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet"></link>
       <h1 className="text-yellow-400 text-5xl font-bold mb-6">ポーカー カジノ</h1>
       <p className="text-white text-lg mb-4">現在のチップ: <span className="text-yellow-400 font-bold">{chip}</span></p>
-  
+
+      {/* 勝利金額の表示を追加 */}
+      {gamePhase === 'final' && winAmount > 0 && (
+          <p className="text-green-400 text-2xl font-bold mb-4">獲得チップ: +{winAmount}</p>
+      )}
+      {gamePhase === 'final' && winAmount === 0 && handRank !== 'ハイカード' && ( // 役はあるが配当0の場合 (例: ロイヤルストレートフラッシュの配当が0になってるとか)
+          <p className="text-gray-400 text-2xl font-bold mb-4">獲得チップ: 0</p>
+      )}
+      {gamePhase === 'final' && handRank === 'ハイカード' && (
+          <p className="text-red-400 text-2xl font-bold mb-4">残念、役なし！</p>
+      )}
+
+
       {gamePhase === 'betting' && (
         <div className="text-center mb-6">
           <label htmlFor="betAmount" className="text-white text-lg">賭けるチップ:</label>
@@ -288,19 +345,21 @@ export const Poker = () => {
           <button
             onClick={placeBet}
             className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded shadow-lg ml-4"
+            disabled={!bet || parseInt(bet, 10) <= 0 || parseInt(bet, 10) > chip || chip === 0} // 無効なベット、チップ不足、チップ0の場合に無効化
           >
             ベット
           </button>
+          {chip === 0 && <p className="text-red-500 text-md mt-2">チップがありません！</p>}
         </div>
       )}
-  
+
       {gamePhase !== 'betting' && (
         <div className="text-center mb-6">
           <h2 className="text-yellow-400 text-2xl font-bold mb-4">あなたの手札</h2>
           <div className="flex justify-center items-center space-x-4">
             {playerHand.map((card, index) => (
               <div
-                key={index}
+                key={card.code} // keyをcard.codeに変更すると、カードが入れ替わったときにReactが適切に差分を認識できる
                 className={`relative cursor-pointer ${selectedCards.includes(index) ? 'border-yellow-500 border-4 rounded-md' : ''}`}
                 onClick={() => toggleSelectCard(index)}
               >
@@ -318,7 +377,7 @@ export const Poker = () => {
           )}
         </div>
       )}
-  
+
       {gamePhase === 'initial' || gamePhase === 'exchange' ? (
         <div className="flex justify-center space-x-4 mb-6">
           <button
@@ -332,18 +391,20 @@ export const Poker = () => {
           </button>
           <button
             onClick={finalizeHand}
-            disabled={gamePhase === 'final' || playerHand.length === 0}
-            className="bg-green-500 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-full shadow-md focus:outline-none focus:ring-2 focus:ring-green-400"
+            disabled={gamePhase === 'final' || playerHand.length === 0 || loading} // ローディング中も無効化
+            className={`bg-green-500 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-full shadow-md focus:outline-none focus:ring-2 focus:ring-green-400 ${
+                (gamePhase === 'final' || playerHand.length === 0 || loading) ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
             確定
           </button>
         </div>
       ) : gamePhase === 'final' ? (
         <div className="text-center mb-6">
-          <p className="text-lg font-semibold text-green-400">結果を確定しました</p>
+          {/* 最終フェーズのボタンは「新しいゲーム」に含めるため、ここでは表示しない */}
         </div>
       ) : null}
-  
+
       <div className="text-center">
         <button
           onClick={startNewGame}
@@ -353,7 +414,7 @@ export const Poker = () => {
         </button>
         <Link
           to="/"
-          className="inline-block bg-blue-500 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 mt-2"
+          className="inline-block bg-blue-500 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 mt-2 ml-4"
         >
           タイトルに戻る
         </Link>
